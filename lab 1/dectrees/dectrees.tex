@@ -1,0 +1,280 @@
+\documentclass[11pt]{article}
+
+\usepackage{graphicx}
+
+\title{DD2431 Machine Learning\\Lab 1: Decision Trees}
+\author{Frank Hoffmann\\modified by \"Orjan Ekeberg}
+
+\begin{document}
+
+\maketitle
+
+\section{Preparations}
+
+Before you start this lab you should be familiar with programming
+in MATLAB.  In particular you should understand how MATLAB
+performs matrix computations, simple graphics, simple programming
+constructs, functions and the help system in MATLAB.
+
+In this lab you will use some predefined functions for building
+decision trees and analyzing their performance, but you will
+also have to program some computations yourself.
+
+
+\section{MONK datasets}
+
+This lab uses the artificial MONK dataset from the UC Irvine repository.
+The MONK's problems are a collection of three binary classification
+problems MONK-1, MONK-2 and MONK-3 over a six-attribute discrete domain.
+The attributes \(a_1, a_2, a_3, a_4, a_5, a_6\) may take the following values:
+
+\begin{center}
+  \begin{tabular}{lll}
+    \(a_1 \in \{1, 2, 3\}\) &
+    \(a_2 \in \{1, 2, 3\}\) &
+    \(a_3 \in \{1, 2\}\)\\
+    \(a_4 \in \{1, 2, 3\}\) &
+    \(a_5 \in \{1, 2, 3, 4\}\) &
+    \(a_6 \in \{1, 2\}\)\\
+  \end{tabular}
+\end{center}
+Consequently, there are 432 possible combinations of attribute values.
+
+The \emph{true} concepts underlying each MONK's problem are given by
+table \ref{tab:truemonk}.
+Can you guess which of the three problems is most difficult for a decision
+tree algorithm to learn?
+
+\begin{table}
+  \caption{True concepts behind the MONK datasets \label{tab:truemonk}}
+  \begin{center}
+    \begin{tabular}{|l|l|}
+      \hline
+      MONK-1 & \((a_1=a_2)\vee(a_5=1)\)\\
+      % (attribute\_1 = attribute\_2) or (attribute\_5 = 1)
+      \hline
+      MONK-2 & \(a_i=1\) for exacly two \(i \in \{1, 2, \ldots, 6\}\)\\
+      % (attribute\_n = 1) for EXACTLY TWO choices of n $\in \{1,2,...,6\}$
+      \hline
+      MONK-3 & \((a_5=1 \wedge a_4=1) \vee (a_5\ne 4 \wedge a_2\ne 3)\)\\
+      %(attribute\_5  = 3 and attribute\_4  = 1) or\\
+      %(attribute\_5 != 4 and attribute\_2 != 3)\\
+      \hline
+    \end{tabular}
+  \end{center}
+  MONK-3 has 5\% additional noise (misclassifications) in the training set.
+\end{table}
+
+\begin{table}
+  \caption{Characteristics of the three MONK datasets \label{tab:monk}}
+  \begin{center}
+    \begin{tabular}{|c|c|c|c|c|}\hline
+      Name & \# train & \# test & \# attributes & \# classes\\ \hline \hline
+      MONK-1 & 124 & 432 & 6 & 2\\ \hline
+      MONK-2 & 169 & 432 & 6 & 2\\ \hline
+      MONK-3 & 122 & 432 & 6 & 2\\ \hline
+    \end{tabular}
+  \end{center}
+\end{table}
+
+The data consists of three separate datasets MONK-1, MONK-2 and
+MONK-3.  Each dataset is further divided into a training and test set,
+where the first one is used for learning the decision tree, and the
+second one to evaluate its classification accuracy (see table
+\ref{tab:monk}).  The datasets are available in
+the directory \verb#/info/ml10/labs/dectrees/# as
+\verb#monks-1.train#, \verb#monks-1.test#, \verb#monks-2.train#,
+\verb#monks-2.test#, \verb#monks-3.train# and \verb#monks-3.test#.
+Each row contains one instance.  The first column contains the target
+class (0 or 1), and the next six columns the attributes.  You can
+ignore the last column containing the string $data_i$ which simply
+enumerates the instances.
+
+For the sake of convenience you find a MATLAB script \verb#readmonks.m#
+that loads the datasets into MATLAB.
+\begin{verbatim}
+>> addpath('/info/ml10/labs/dectrees');
+>> readmonks
+>> who
+\end{verbatim}
+The data sets are loaded into MATLAB variables called
+\verb#monks_1_train#, \verb#monks_1_test# etc.  Notice, that for
+compatibility reasons the class is stored in the last column and the
+first six columns contain the attributes.
+
+
+\section{Decision Trees}
+
+In order to decide on which attribute to split, the decision tree learning
+algorithms such as ID3 and C4.5 use a statistical property
+called \emph{information gain}.  It measures how well a particular attribute
+distinguishes among different target classifications. Information gain
+is measured in terms of the expected reduction in the \emph{entropy} or impurity of the data. 
+The entropy of an arbitrary collection of examples is measured by
+\begin{equation}
+\textrm{Entropy}(S) = - \sum_i p_i \log_2 p_i
+\label{eq:entropy}
+\end{equation}
+in which $p_i$ denotes the proportion of examples of class $i$ in $S$. 
+The monk dataset is a binary classification problem (class 0 or 1) and
+therefore equation (\ref{eq:entropy}) simplifies to
+\begin{equation}
+\textrm{Entropy}(S) = - p_0 \log_2 p_0 - p_1 \log_2 p_1
+\end{equation}
+where $p_0$ and $p_1=1-p_0$ are the proportions of examples belonging to class 
+$0$ and $1$.\\
+
+\noindent
+\textbf{Assignment 1:} Write a function \verb#ent(data)# that computes
+the entropy of a collection of examples passed as the parameter \verb#data#.
+Hint: MATLAB has a build in function, \verb#log2#, for computing the base 2 logarithm.
+Use your function to compute the entropy of the three MONK \emph{training} data sets.
+
+\begin{center}
+  \begin{tabular*}{0.9\textwidth}{|c|c@{\extracolsep{\fill}}c|}
+    \hline
+    Dataset & Entropy & \\
+    \hline\hline
+    MONK-1 & & \\
+    \hline
+    MONK-2 & & \\
+    \hline
+    MONK-3 & & \\
+    \hline
+  \end{tabular*}
+\end{center}
+
+
+The information gain measures the expected reduction in impurity
+caused by partitioning the examples according to an attribute.
+It thereby indicates the effectiveness of an attribute in classifying the 
+training data. The information gain of an attribute $A$, relative to 
+a collection of examples $S$ is defined as
+\begin{equation}
+\textrm{Gain}(S,A) = \textrm{Entropy}(S) -
+ \sum_{k \in \textrm{values}(A)} \frac{|S_k|}{|S|} \textrm{Entropy}(S_k)
+\end{equation}
+where $S_k$ is the subset of examples in $S$ for the attribute $A$ has the value $k$.
+For the purpose of extracting the subset of examples use the two following MATLAB
+functions provided in the course directory. \\
+\verb#values(data,i)# returns a vector of unique values for the i-th attribute in data.\\
+\verb#subset(data,i,j)# returns the subset of examples in data for which attribute i 
+has value j.\\
+
+\noindent
+\textbf{Assignment 2:} Write a function \verb#gain(data)# that computes
+the information gain of all the attributes  of a collection of examples.
+Use this function to compute the information gain of the six attributes in
+the three MONK training data sets.\\
+\begin{center}
+  Information Gain\\[1ex]
+  \begin{tabular*}{\textwidth}{|c@{\extracolsep{\fill}}|c|c|c|c|c|c|}
+    \hline
+    Dataset & $a_1$ & $a_2$ & $a_3$ & $a_4$ & $a_5$ & $a_6$ \\
+    \hline
+    \verb!MONK-1 ! & & & & & & \\
+    \hline
+    \verb!MONK-2 ! & & & & & & \\
+    \hline
+    \verb!MONK-3 ! & & & & & & \\
+    \hline
+  \end{tabular*}
+\end{center}
+Based on the results, which attribute should be used for splitting the
+examples at the root node? 
+
+Split the data into subsets according to the selected attribute
+and compute the information gains for the nodes on the next level
+of the tree. Which attributes should be tested for these nodes?
+
+For the $monks\_1\_train$ data draw the decision tree up to the first
+two levels and assign the majority class of the subsets that
+resulted from the two splits to the leaf nodes.
+Use the predefined function \verb#majority_class(data)# to
+obtain the majority class for a set of instances. 
+
+Now compare your results with that of a predefined routine
+for ID3. Use the function 
+\verb#T=build_tree(data)# to build the decision tree and
+the function \verb#disp_tree(T)# to display the tree.
+Notice, that in the display a \emph{no} corresponds to class 0,
+\emph{yes} to class 1. If you set the global variable \verb#max_depth=2#, 
+you can limit the depth of the decision
+tree built. Note that in order to set the \verb#max_depth# variable
+you have to declare it \verb#global# and rerun \verb#build_tree()#
+after changing the value.  Do not forget to set this parameter back to 
+its original value of 10 afterwards.\\
+
+\noindent
+\textbf{Assignment 3:} 
+Build the full decision trees for all three Monk datasets using
+the some predefined routines for ID3.\\
+
+\verb#calculate_error(T,data)#\\ 
+computes the classification error over some data.\\
+
+For example to built a tree for monks\_1, display
+it and compute the test set error
+for monks\_1
+\begin{verbatim}
+>> T=build_tree(monks_1_train);
+>> disp_tree(T);
+>> error=calculate_error(T,monks_1_test);
+\end{verbatim}
+
+Compute the train and test set errors for the three Monk datasets for
+the unpruned trees. 
+\begin{center}
+  \begin{tabular*}{0.7\textwidth}{|c|@{\extracolsep{\fill}}c|c|}
+    \hline
+    & $E_\textrm{train}$ & $E_\textrm{test}$ \\
+    \hline\hline
+    \verb#MONK-1# & & \\
+    \hline
+    \verb#MONK-2# & & \\
+    \hline
+    \verb#MONK-3# & & \\
+    \hline
+  \end{tabular*}
+\end{center}
+
+
+The idea of reduced error pruning
+is to consider each node in the tree as a candidate for pruning.
+A node is removed if the resulting pruned tree performs no
+worse than the original tree over a validation set not used
+during training. In that case the subtree rooted at that node
+is replaced by a leaf node, to which the majority classification
+of examples in that node is assigned.\\
+\verb#T=prune_tree(T,data)#\\
+prunes a tree previously generated with \verb#build_tree#
+using the examples in \verb#data#.
+
+For the purpose of pruning,
+we have to partition our original training data into a training
+set for building the tree and a validation set for pruning tree.
+Notice, that using the test set for validation would be cheating
+as we then are no longer able to use the test set for estimating
+the true error of our pruned decision tree. Therefore, we randomly partition
+the original training set into training and validation set.
+\begin{verbatim}
+>> [n,m]=size(monks_1_train);
+>> p=randperm(n);
+>> frac=0.7;
+>> monks_1_train_new=monks_1_train(p(1:floor(n*frac)),:);
+>> monks_1_prune=monks_1_train(p(floor(n*frac)+1:n),:);
+>> T1=build_tree(monks_1_train_new);
+>> T1p=prune_tree(T1,monks_1_prune);
+\end{verbatim}
+Where the fraction \verb#frac# of instances is used for building the tree
+and the remaining examples for pruning it.\\
+
+\noindent
+\textbf{Assignment 4:} 
+Evaluate the effect of pruning on the test error for the monk\_1 and monk\_3
+datasets, in particular determine the optimal partition 
+into training and pruning by optimizing the parameter \verb#frac#.
+Plot the classification error on the test sets as a function of the 
+parameter \verb#frac# $\in \{0.3,0.4,0.5,0.6,0.7,0.8\}$. 
+
+\end{document}

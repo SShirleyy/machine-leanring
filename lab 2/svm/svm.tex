@@ -1,0 +1,508 @@
+\documentclass{article}
+
+\usepackage{listings}
+\usepackage{tcolorbox}
+
+\begin{document}
+
+\lstset{language=Python,frame=single}
+
+%\title{\vspace{-5cm}DD2431 Machine Learning\\Lab 2: Support Vector Machines}
+\title{DD2431 Machine Learning\\Lab 2: Support Vector Machines}
+\author{\"Orjan Ekeberg \\ Updated 2017 by Martin Hjelm \& Nils Bore}
+
+\maketitle
+
+\section{Task}
+
+Your task is to build a Support Vector Machine for classification.  You
+will make use of a library routine to solve the convex optimization
+problem which emerges in the dual formulation of the support vector
+machine.  You need to write code for structuring the data so that the
+library routine can find the maximal-margin solution, and code for
+transforming this solution into a classifier which can process new
+data.
+
+You will work in Python and use the \texttt{numpy} and \texttt{pylab}
+packages.  You will also need the \texttt{cvxopt} package for convex
+optimization.
+
+For reporting, you need to produce plots showing the decision boundary
+when using different kernel funcions.  Optionally, you can also study
+how the introduction of slack variables change the boundary.
+
+\begin{description}
+\item[Note:] The package \texttt{cvxopt} is not installed on the Sun
+  computers in the lab rooms.  Use the GNU/Linux machines in Gr\"on,
+  or log in remotely (via \texttt{ssh -X}) on either
+  \texttt{u1.nada.kth.se} or \texttt{u2.nada.kth.se}.
+\end{description}
+
+
+\section{Theory}
+
+The idea is to build a classifier which first makes an (optional)
+transformation of the input data, and then a linear separation where
+the decision boundary is placed to give maximal margins to the
+available data points.  The location of the decision boundary is given
+by the weights (\(\vec{w}\)) and the bias (\(b\)) so the problem is to
+find the values for \(\vec{w}\) and \(b\) which maximizes the margin,
+i.e. the distance to any datapoint.
+
+The \emph{primal} formulation of this optimization problem can be
+stated mathematically like this:
+\begin{equation}\label{eq:primal}
+  \min_{\vec{w}, b} ||\vec{w}||
+\end{equation}
+under the constraints
+\begin{equation}\label{eq:primalconstraints}
+t_i(\vec{w}^T\cdot\phi(\vec{x}_i) + b) \ge 1 \qquad \forall i
+\end{equation}
+where we have used the following notation:
+\begin{center}
+  \begin{tabular}{cl}
+    \(\vec{w}\) & Weight vector defining the separating hyperplane \\
+    \(b\) & Bias for the hyperplane \\
+    \(\vec{x}_i\) & The \(i\)th datapoint \\
+    \(t_i\) & Target class (\(-1\) or \(1\)) for datapoint \(i\) \\
+    \(\phi(\ldots)\) & Optional transformation of the input data \\
+  \end{tabular}
+\end{center}
+
+The constraints (\ref{eq:primalconstraints}) enforce that all
+datapoints are not only correctly classified, but also that they stay
+clear of the decision boundary by a certain margin.  Solving this
+optimization problem results in values for \(\vec{w}\) and \(b\) which
+makes it possible to classify a new datapoint \(\vec{x}^\star\) using
+this \emph{indicator} function:
+\begin{equation}\label{eq:primalindicator}
+  \mathrm{ind}(\vec{x}^\star) = \vec{w}^T\cdot\phi(\vec{x}^\star) + b
+\end{equation}
+
+If the indicator returns a positive value, we say that
+\(\vec{x}^\star\) belongs to class \(1\), if it gives a negative
+value, we conclude that the class is \(-1\).  All the training data
+should have indicator values above \(1\) or below \(-1\), since the
+interval between \(-1\) and \(1\) constitutes the margin.
+
+The bias variable, \(b\), can be eliminated by a standard trick, i.e.\
+by incorporating it as an extra element in the weight vector
+\(\vec{w}\).  We then need to let the \(\phi(\ldots)\) function append
+a corresponding constant component, typically the value \(1\).  Note
+that by using this trick we are actually slightly modifying the
+problem, since we are now also including the bias value in the cost
+function (\(||\vec{w}||\)).  In practice, this will not make much
+difference, and we will use this ``bias free'' version from here on.
+
+
+\subsection{Dual Formulation}
+
+The optimization problem can be transformed into a different form,
+called the \emph{dual problem} which has some computational
+advantages.  In particular, it makes it possible to use the
+\emph{kernel trick}, thereby eliminating the need for evaluating the
+\(\phi(\ldots)\) function directly.  This allows us to use
+transformations into very high-dimensional spaces without the
+penalty of excessive computational costs.
+
+The dual form of the problem is to find the values \(\alpha_i\) which minimizes:
+\begin{equation}\label{eq:dual}
+  \frac{1}{2}\sum_i\sum_j\alpha_i\alpha_j t_it_j
+  {\cal K}(\vec{x}_i, \vec{x}_j)
+  -\sum_i\alpha_i
+\end{equation}
+subject to the constraints
+\begin{equation}\label{eq:dualconstraints}
+  \alpha_i \ge 0 \quad \forall i
+\end{equation}
+
+The function \({\cal K}(\vec{x}_i, \vec{x}_j)\) is called a \emph{kernel
+  function} and computes the scalar value corresponding to
+\(\phi(\vec{x}_i)\cdot\phi(\vec{x}_j)\).  This is, however, normally done
+implicitly, i.e., without actually computing the two vectors and
+taking their scalar product (see section \ref{sec:kernel}).
+
+The indicator function now takes the form:
+\begin{equation}\label{eq:dualindicator}
+  \mathrm{ind}(\vec{x}^\star) = \sum_i \alpha_i t_i
+  {\cal K}(\vec{x}^\star, \vec{x}_i)
+\end{equation}
+
+For normal data sets, only a handful of the \(\alpha\)'s will be
+non-zero.  Most of the terms in the indicator function will therefore
+be zero, and since this is known beforehand its evaluation can often
+be made very efficient.
+
+
+\subsection{Matrix Formulation}
+
+The dual problem can be expressed in a more compact form using vectors
+and matrices: find the vector \(\vec{\alpha}\) which minimizes
+\begin{equation}\label{eq:ourprob}
+  \frac{1}{2}\vec{\alpha}^T P \vec{\alpha} -
+  \vec{\alpha}\cdot\vec{1} \qquad \textrm{where } \vec{\alpha}\ge\vec{0}
+\end{equation}
+\(\vec{1}\) denotes a vector where all elements are one.
+Correspondingly, \(\vec{0}\) is a vector with all zeros.
+We have also introduced the matrix \(P\), with these elements:
+\begin{equation}\label{eq:kernel}
+  P_{i,j} = t_i t_j {\cal K}(\vec{x}_i, \vec{x}_j)
+\end{equation}
+
+In fact, this is a standard form for formulating quadratic
+optimization problems with linear constraints.  This is a well known
+class of optimization problems where efficient solving algorithms are
+available.
+
+
+\subsection{Adding Slack Variables}
+
+The above method will fail if the training data are not linearly
+separable.  In many cases, especially when the data contain some sort
+of noise, it is desirable to allow a few datapoints to be
+misclassified if it results in a substantially wider margin.  This is
+where the method of \emph{slack variables} comes in.
+
+Instead of requiring that \emph{every} datapoint is on the right side
+of the margin (equation \ref{eq:primalconstraints}) we will now allow
+for mistakes, quantified by variables \(\xi_i\) (one for each
+datapoint).  These are called \emph{slack variables}.  The constraints
+will now be
+\begin{equation}\label{eq:slackprimalconstraints}
+t_i(\vec{w}^T\cdot\phi(\vec{x}_i)) \ge 1 - \xi_i \qquad \forall i
+\end{equation}
+(Remember that we have already eliminated \(b\) from
+(\ref{eq:primalconstraints}) by including it as a weight).
+
+To make sense, we must ensure that the slack variables do not become
+unnecessarily large.  This is easily achieved by adding a penalty term
+to the cost function, such that large \(\xi\) values will be penalized:
+\begin{equation}\label{eq:slackprimal}
+  \min_{\vec{w}, \vec{\xi}} ||\vec{w}|| + C \sum_i \xi_i
+\end{equation}
+
+The new parameter \(C\) sets the relative importance of avoiding slack
+versus getting a wider margin.  This has to be selected by the user,
+based on the character of the data.  Noisy data typically deserve a
+low \(C\) value, allowing for more slack, since individual datapoints
+in strange locations should not be taken too seriously.
+
+Fortunately, the dual formulation of the problem need only a slight
+modification to incorporate the slack variables.  In fact, we only
+need to add an extra set of constraints to (\ref{eq:dualconstraints}):
+\begin{equation}\label{eq:slackdualconstraints}
+  \alpha_i \ge 0 \quad \forall i \quad\textrm{and}\quad \alpha_i \le C \quad \forall i
+\end{equation}
+Equation (\ref{eq:dual}) stays the same.
+
+
+\subsection{Selection of Kernel Function}
+\label{sec:kernel}
+
+One of the great advantages to support vector machines is that they
+are not restricted to linear separation.  By transforming the input
+data non-linearly to a high-dimensional space, more complex decision
+boundaries can be utilized.  In the dual formulation, these
+transformed data points \(\phi(\vec{x}_i)\) always appear in pairs,
+and the only thing needed is the scalar product between the pair.
+This makes it possible to use what is often referred to as the
+\emph{kernel trick}, i.e. we do not actually have to make the data
+transformation but, instead, we use a kernel function which directly
+returns the scalar product \(\phi(\vec{x}_i)\cdot\phi(\vec{x}_j)\).
+
+Here are the most commonly used kernel functions:
+\begin{itemize}
+\item Linear kernel
+
+  \[{\cal K}(\vec{x}, \vec{y}) = \vec{x}^T\cdot\vec{y} + 1\] This
+  kernel simply returns the scalar product between the two points.
+  This results in a linear separation.  Note the addition of \(1\)
+  which comes from the elimination of the bias (\(b\)) by appending a
+  constant element \(1\) to the data, resulting in an extra term
+  \(1\times1\) added to the scalar product.
+
+\item Polynomial kernels
+
+  \[{\cal K}(\vec{x}, \vec{y}) = (\vec{x}^T\cdot\vec{y} + 1)^p\] This
+  kernel allows for curved decision boundaries.  The exponent \(p\) (a
+  positive integer) controls the degree of the polynomials.  \(p=2\)
+  will make quadratic shapes (ellipses, parabolas, hyperbolas).
+  Setting \(p=3\) or higher will result in more complex shapes.
+
+\item Radial Basis Function kernels
+
+  \[{\cal K}(\vec{x}, \vec{y}) =
+  e^{-\frac{(\vec{x}-\vec{y})^2}{2\sigma^2}}\] This kernel uses the
+  explicit difference between the two datapoints, and often results in
+  very good boundaries.  The parameter \(\sigma\) can be used to
+  control the smoothness of the boundary.
+
+\item Sigmoid kernels
+
+  \[{\cal K}(\vec{x}, \vec{y}) = \tanh(k \vec{x}^T\cdot\vec{y} -
+  \delta)\] This is yet another possible non-linear kernel.
+  Parameters \(k\) and \(\delta\) need to be tuned to get best
+  performance.
+
+\end{itemize}
+
+
+\section{Implementation}
+
+We will make use of a Python package for convex
+optimization\footnote{Quadratic problems are a special case of convex
+  problems.} called \texttt{cvxopt}.  In particular, we will call the
+function \texttt{qp} to solve our quadratic optimization problem.  The
+\texttt{cvxopt} package relies on its own implementation of matrices
+so we must convert \texttt{numpy} arrays to \texttt{cvxopt}
+matrices.
+
+Start by importing \texttt{qp} and \texttt{matrix} from
+\texttt{cvxopt}, and the other packages you will need:
+
+\begin{lstlisting}
+  from cvxopt.solvers import qp
+  from cvxopt.base import matrix
+
+  import numpy, pylab, random, math
+\end{lstlisting}
+
+\texttt{matrix} is a function which takes anything that can be
+interpreted as a matrix, for example a \texttt{numpy} array or an
+ordinary Python list of lists, and converts it into a \texttt{cvxopt}
+matrix which can be passed as a parameter to \texttt{qp}.
+
+The call to \texttt{qp} can look like this:
+\begin{lstlisting}
+  r = qp(matrix(P), matrix(q), matrix(G), matrix(h))
+  alpha = list(r['x'])
+\end{lstlisting}
+This will find the \(\vec{\alpha}\) which minimizes
+\begin{equation}\label{eq:qp}
+  \frac{1}{2}\vec{\alpha}^T P\vec{\alpha} + \vec{q}^T\vec{\alpha} \qquad \textrm{while }
+  G\vec{\alpha}\le \vec{h}
+\end{equation}
+Here, \(P\) and \(G\) are matrices, while \(\vec{q}\) and \(\vec{h}\) are vectors.
+
+As you can see, this is very similar to the problem we have.  This is
+no coincidence, because we have formulated the problem in a standard
+way.  To use \texttt{qp} for our problem we only need to build the
+necessary vectors and matrices; then \texttt{qp} will give us the
+optimal \(\alpha\)'s.
+
+\subsection{Things to implement}
+
+You will have to write code for:
+\begin{itemize}
+\item A suitable kernel function
+
+  The kernel function takes two data points as arguments and returns a
+  ``scalar product-like'' similarity measure; a scalar value.  Start
+  with the linear kernel which is almost the same as an ordinary
+  scalar product.  Do not forget that you need to add \(1\) to the
+  output, representing the extra ``always-one'' component.
+
+\item Build the \(P\) matrix from a given set of data points
+
+  From the theory section we know that the \(P\) matrix should have
+  the elements
+  \[
+    P_{i,j}=t_i t_j {\cal K}(\vec{x}_i, \vec{x}_j)
+  \]
+  Indices \(i\) and \(j\) run over all the data points.  Thus, if you
+  have \(N\) data points, \(P\) should be an \(N\times N\) matrix.
+
+\item Build the \(\vec{q}\) vector, \(G\) matrix, and \(\vec{h}\)
+  vector
+
+  These vectors and matrices do not hold any actual data.  Still, they
+  need to be set up properly so that \texttt{qp} solves the right
+  problem.
+
+  By matching our problem (equation \ref{eq:ourprob}) with what
+  \texttt{qt} solves (equation \ref{eq:qp}) we can see that
+  \(\vec{q}\) should be a \(N\) long vector containing only the number
+  \(-1\).  Similarly, we realize that \(\vec{h}\) must be a vector
+  with all zeros.
+
+  Note that the greater-than relation in (\ref{eq:ourprob}) has to be
+  made to match the less-than relation in (\ref{eq:qp}).  This can be
+  achieved by creating a \(G\) matrix which has \(-1\) in the diagonal
+  and zero everywhere else (check this!).
+
+\item Call \texttt{qp}
+
+  Make the call to \texttt{qp} as indicated in the code sample above.
+  \texttt{qp} returns a dictionary data structure; this is why we must
+  must use the string \texttt{'x'} as an index to pick out the actual
+  \(\alpha\) values.
+
+\item Pick out the non-zero \(\alpha\) values
+
+  If everything else is correct, only a few of the \(\alpha\) values
+  will be non-zero.  Since we are dealing with floating point values,
+  however, those that are supposed to be zero will in reality only be
+  approximately zero.  Therefore, use a low threshold (\(10^{-5}\)
+  should work fine) to determine which are to be regarded as non-zero.
+
+  You need to save the non-zero \(\alpha_i\)'s along with the
+  corresponding data points (\(\vec{x}_i\)) in a separate data
+  structure, for instance a list.
+
+\item Implement the indicator function
+
+  Implement the indicator function (equation \ref{eq:dualindicator}) which
+  uses the non-zero \(\alpha_i\)'s together with their \(\vec{x}_i\)'s
+  to classify new points.
+
+\end{itemize}
+
+
+\section{Generating Test Data}
+
+In order to visualize the decision boundaries graphically we will
+restrict ourselves to two-dimensional data, i.e. points in the plane.
+The data will have the form of a vector of datapoints, where each
+datapoint is a triple of numbers.  The first two numbers are the \(x\)
+and \(y\) coordiates and the last number is the class (\(-1\) or
+\(1\)).
+
+We will use the function \texttt{random.normalvariate} to generate random
+numbers with a normal distribution.  This is suitable for our task as
+we can build up more complex distributions by concatenating sample
+sets from multiple normal distributions.
+
+\begin{lstlisting}
+# Uncomment the line below to generate 
+# the same dataset over and over again.
+# numpy.random.seed(100)
+classA = [(random.normalvariate(-1.5, 1),
+           random.normalvariate(0.5, 1),
+           1.0)
+          for i in range(5)] + \
+         [(random.normalvariate(1.5, 1),
+           random.normalvariate(0.5, 1),
+           1.0)
+          for i in range(5)]
+
+classB = [(random.normalvariate(0.0, 0.5),
+           random.normalvariate(-0.5, 0.5),
+           -1.0)
+          for i in range(10)]
+
+data = classA + classB
+random.shuffle(data)
+\end{lstlisting}
+This will create ten datapoints for each class.  The last line randomly reorders
+the points.  You may want to change the values to move the clusters of data
+around.
+
+In order to see your data, you can use the plot functions from \texttt{pylab}.
+This code will plot your two classes using blue and red dots.
+\begin{lstlisting}
+pylab.hold(True)
+pylab.plot([p[0] for p in classA],
+           [p[1] for p in classA],
+           'bo')
+pylab.plot([p[0] for p in classB],
+           [p[1] for p in classB],
+           'ro')
+pylab.show()
+\end{lstlisting}
+
+
+
+
+\section{Plotting the Decision Boundary}
+
+Plotting the decision boundary is a great way of visualizing how the
+resulting support vector machine classifies new datapoints.  The idea
+is to plot a curve in the input space (which is two dimensional here),
+such that all points on one side of the curve is classified as one
+class, and all points on the other side are classified as the other.
+
+\texttt{pylab} has a function call \texttt{contour} that can be used
+to plot contour lines of a function given as values on a grid.
+Decision boundaries are special cases of contour lines; by drawing a
+contour at the level where the classifier has its threshold we will
+get the decision boundary.
+
+What we will have to do is to call your indicator function at a large
+number of points to see what the classification is at those points.
+We then draw a contour line at level zero, but also countour lines at
+\(-1\) and \(1\) to visualize the margin.
+
+\begin{lstlisting}
+xrange=numpy.arange(-4, 4, 0.05)
+yrange=numpy.arange(-4, 4, 0.05)
+
+grid=matrix([[indicator(x, y)
+              for y in yrange]
+             for x in xrange])
+
+pylab.contour(xrange, yrange, grid,
+              (-1.0, 0.0, 1.0),
+              colors=('red', 'black', 'blue'),
+              linewidths=(1, 3, 1))
+\end{lstlisting}
+
+If everything is correct, the margins should touch some of the
+datapoints.  These are the \emph{support vectors}, and should
+correspond to datapoints with non-zero \(\alpha\)'s.  You may want to
+plot datapoints with non-zero \(\alpha\)'s using a separate kind of
+marker to visualize this.
+
+\section{Running and Reporting}
+
+Once you have the linear kernel running, there are a number of things you
+can explore.  Remember that support vector machines are especially
+good at finding a reasonable decision boundary from small sets of
+training data.
+
+\begin{tcolorbox}
+\begin{enumerate}
+\item
+  Move the clusters around to make it easier or harder for the
+  classifier to find a decent boundary.  Pay attention to when
+  the \texttt{qt} function prints an error message that it can
+  not find a solution.
+\item
+  Implement some of the non-linear kernels. you should be able to
+  classify very hard datasets.
+\item
+  The non-linear kernels have parameters;
+  explore how they influence the decision boundary.
+  Reason about this in terms of the bias-variance trade-off.
+\end{enumerate}
+\end{tcolorbox}
+
+\section{Slack Implementation}
+
+You should now alter your program to include slack variables.
+They can quite easily be incorporated by adding the extra
+contraints (equation \ref{eq:slackdualconstraints}).  This means that
+you have to extend the matrix \(G\) and vector \(\vec{h}\) with additional rows
+corresponding to the \(\alpha_i \le C\) constraints:
+
+\begin{itemize}
+\item $G$ should now be a $2 N \times N$ matrix. Note that the constraint is now reversed, resulting
+      in the additional lower part being negated as compared to previously.
+\item $\vec{h}$ should now be a $2 N$ column vector. %The $C$ values should go in the corresponding lower part of $h$.
+\end{itemize}
+
+Repeat the previous exercise with slack variables added.
+Answer the additional following questions:
+\begin{tcolorbox}
+\begin{enumerate}
+\item Explore the role of the parameter \(C\). What happens for very large/small values?
+\item Imagine that you are given data that is not easily separable.
+      When should you opt for more slack rather than going for a more complex model and vice versa?
+\end{enumerate}
+\end{tcolorbox}
+
+\section{The End}
+
+You are now done. Please make sure you answered all the questions and
+printed plots to support your reasoning.
+
+\end{document}
